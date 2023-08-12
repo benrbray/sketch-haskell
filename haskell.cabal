@@ -1,0 +1,57 @@
+cabal-version:       3.6
+name:                haskell
+version:             0.1.0.0
+license-file:        LICENSE
+author:              Benjamin Bray
+maintainer:          benrbray@gmail.com
+build-type:          Simple
+extra-source-files:  CHANGELOG.md
+
+common common
+  default-language: GHC2021
+  default-extensions:
+    InstanceSigs,
+    ScopedTypeVariables,
+    ExplicitForAll
+  build-depends:
+    base >= 4.17 && < 5,
+    containers,
+    text
+
+executable haskell
+  import: common
+  hs-source-dirs: src
+  main-is: Main.hs
+  build-depends:
+    transformers
+  other-modules:
+    NestedType,
+    RecursionSchemes,
+    TreeShapes,
+    Yoneda,
+    Profunctor,
+    StateMonad
+
+executable jozefg2017
+  import: common
+  hs-source-dirs: Jozefg2017
+  main-is: Main.hs
+  build-depends:
+    transformers,
+    megaparsec,
+    logict,
+    monad-gen,
+    protolude
+  other-modules:
+    Unification
+
+executable fol
+  import: common
+  hs-source-dirs: src/FOL
+  main-is: Main.hs
+  build-depends:
+    transformers,
+    megaparsec
+  other-modules:
+    FirstOrderLogic
+    Parser

@@ -1,0 +1,31 @@
+cradle:
+  cabal:
+    - path: "src/Main.hs"
+      component: "haskell:exe:haskell"
+
+    - path: "src/NestedType.hs"
+      component: "haskell:exe:haskell"
+
+    - path: "src/RecursionSchemes.hs"
+      component: "haskell:exe:haskell"
+
+    - path: "src/TreeShapes.hs"
+      component: "haskell:exe:haskell"
+
+    - path: "src/Yoneda.hs"
+      component: "haskell:exe:haskell"
+
+    - path: "src/Profunctor.hs"
+      component: "haskell:exe:haskell"
+
+    - path: "src/StateMonad.hs"
+      component: "haskell:exe:haskell"
+
+    - path: "Jozefg2017/Main.hs"
+      component: "haskell:exe:jozefg2017"
+
+    - path: "Jozefg2017/Unification.hs"
+      component: "haskell:exe:jozefg2017"
+
+    - path: "src/FOL/Main.hs"
+      component: "haskell:exe:fol"
