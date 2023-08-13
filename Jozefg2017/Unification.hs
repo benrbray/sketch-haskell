@@ -244,6 +244,12 @@ generateSubst nBound metaVar f nArgs = do
 
   pure $ M.singleton metaVar <$> candidates
 
+fmap3 :: (Functor f, Functor g, Functor h) => (a -> b) -> f (g (h a)) -> f (g (h b))
+fmap3 = fmap . fmap . fmap
+
+interleaveMany :: [UnifyM a] -> UnifyM a
+interleaveMany = foldr interleave mempty
+
 -- takes the current substitution and a set of constraints
 -- to produce a solution substitution and a set of flex-flex equations
 unify :: Subst -> S.Set Constraint -> UnifyM (Subst, S.Set Constraint)
@@ -283,46 +289,17 @@ unify s0 cs0 = do
         go :: [UnifyM [Subst]] -> UnifyM (Subst, Set Constraint)
         go = (interleaveMany . fmap3 unifyWith) >=> interleaveMany
         
-    fmap3 :: (Functor f, Functor g, Functor h) => (a -> b) -> f (g (h a)) -> f (g (h b))
-    fmap3 = fmap . fmap . fmap
 
-    interleaveMany :: [UnifyM a] -> UnifyM a
-    interleaveMany = foldr interleave mempty
+    -- trySubsts :: S.Set Constraint -> [UnifyM [Subst]] -> UnifyM (Subst, S.Set Constraint)
+    -- trySubsts cs [] = mempty -- given no substitutions, we have no choice but to fail
+    -- trySubsts cs (mss : psubsts) = do
+    --   ss <- mss
 
-    -- test2 :: UnifyM [Subst] -> UnifyM [UnifyM (Subst, Set Constraint)]
-    -- test2 = ((map unifyWith) <$>)
-
-    -- test4 :: [UnifyM [Subst]] -> [UnifyM [UnifyM (Subst, Set Constraint)]]
-    -- test4 = map ((map unifyWith) <$>)
-
-    -- test5 :: [UnifyM [Subst]] -> UnifyM [UnifyM (Subst, Set Constraint)]
-    -- test5 = foldr interleave mempty . test4
-
-    -- test6 x = test5 x >>= foldr interleave mempty
-
-    -- test7 :: [UnifyM [Subst]] -> UnifyM (Subst, Set Constraint)
-    -- test7 = (interleaveMany =<<) . interleaveMany . map ((map unifyWith) <$>)
-
-    flatTraverse :: (Traversable t, Monad t) => (a -> t b) -> t a -> t b
-    flatTraverse f x = join (traverse f x)
-
-    flatSequence :: (Traversable t, Monad t) => t (t a) -> t a
-    flatSequence = join . sequence
-
-    flatSequenceM :: (Traversable t, Monad t, Monad m) => m (t (m a)) -> m (t a)
-    flatSequenceM = (sequence =<<)
-
-
-    trySubsts :: S.Set Constraint -> [UnifyM [Subst]] -> UnifyM (Subst, S.Set Constraint)
-    trySubsts cs [] = mempty -- given no substitutions, we have no choice but to fail
-    trySubsts cs (mss : psubsts) = do
-      ss <- mss
-
-      -- note: interleave is essentially equivalent to @mplus@ from the list
-      -- monad but searches fairly in the case of infinite lists. This takes
-      -- care of handling backtracking in a seamless and mostly invisible way!
-      let unifyWith x = unify (x <+> s0) cs
-      let foo   = map unifyWith ss -- [ unifyWith newS | newS <- ss]
-      let these = foldr interleave mempty foo
-      let those = trySubsts cs psubsts
-      these `interleave` those
+    --   -- note: interleave is essentially equivalent to @mplus@ from the list
+    --   -- monad but searches fairly in the case of infinite lists. This takes
+    --   -- care of handling backtracking in a seamless and mostly invisible way!
+    --   let unifyWith x = unify (x <+> s0) cs
+    --   let foo   = map unifyWith ss -- [ unifyWith newS | newS <- ss]
+    --   let these = foldr interleave mempty foo
+    --   let those = trySubsts cs psubsts
+    --   these `interleave` those
