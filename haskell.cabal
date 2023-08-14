@@ -9,10 +9,71 @@ extra-source-files:  CHANGELOG.md
 
 common common
   default-language: GHC2021
+  ghc-options:
+      -Werror
+      -Weverything
+      -Wno-all-missed-specialisations
+      -Wno-missed-specialisations
+      -Wno-missing-export-lists
+      -Wno-missing-exported-signatures
+      -Wno-missing-import-lists
+      -Wno-missing-kind-signatures
+      -Wno-missing-local-signatures
+      -Wno-missing-safe-haskell-mode
+      -Wno-monomorphism-restriction
+      -Wno-prepositive-qualified-module
+      -Wno-safe
+      -Wno-unsafe
+      -Wno-unused-packages
+      -Wno-unused-binds
+      -Wno-unused-local-binds
+      -Wno-unused-imports
+      -fhide-source-paths
+      -freverse-errors
   default-extensions:
-    InstanceSigs,
-    ScopedTypeVariables,
+    BangPatterns
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DuplicateRecordFields
+    EmptyCase
+    EmptyDataDeriving
     ExplicitForAll
+    FlexibleContexts
+    FlexibleInstances
+    FunctionalDependencies
+    GeneralizedNewtypeDeriving
+    InstanceSigs
+    LambdaCase
+    MultiParamTypeClasses
+    MultiWayIf
+    NamedFieldPuns
+    NoFieldSelectors
+    NoFieldSelectors
+    NoImplicitPrelude
+    OverloadedLabels
+    OverloadedRecordDot
+    OverloadedStrings
+    PatternSynonyms
+    PolyKinds
+    QuantifiedConstraints
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeOperators
+    UndecidableInstances
+    ViewPatterns
   build-depends:
     base >= 4.17 && < 5,
     containers,
@@ -44,6 +105,20 @@ executable jozefg2017
     protolude
   other-modules:
     Unification
+
+executable diehl2018
+  import: common
+  hs-source-dirs: Diehl2018
+  main-is: Main.hs
+  build-depends:
+    transformers,
+    megaparsec,
+    logict,
+    monad-gen,
+    protolude
+  other-modules:
+    HindleyMilner
+    Archived.Fresh
 
 executable fol
   import: common

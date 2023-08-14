@@ -27,5 +27,14 @@ cradle:
     - path: "Jozefg2017/Unification.hs"
       component: "haskell:exe:jozefg2017"
 
+    - path: "Diehl2018/Main.hs"
+      component: "haskell:exe:diehl2018"
+
+    - path: "Diehl2018/HindleyMilner.hs"
+      component: "haskell:exe:diehl2018"
+
+    - path: "Diehl2018/Archived/Fresh.hs"
+      component: "haskell:exe:diehl2018"
+
     - path: "src/FOL/Main.hs"
       component: "haskell:exe:fol"
