@@ -41,11 +41,20 @@ main = do
   let tvY = TypeVar (TV $ Name "Y")
   let tvZ = TypeVar (TV $ Name "Z")
 
-  let t1 = tvX
-  let t2 = TypeArr tvX tvZ
+  let x = Name "X"
+  let y = Name "Y"
+  let z = Name "Z"
+  let vx = Var x
+  let vy = Var y
+  let vz = Var z
 
-  let result = runGen $ runExceptT (unify t1 t2)
+  let example1 = Lam x (Lam y (Lam z (Op Add vx (Op Add vy vz))))
+
+  let result = runInfer $ infer emptyTypeEnv example1
   case result of
-    Right x -> print x
-    Left err -> prettyPrint err
+    Left err  -> prettyPrint err
+    Right (subst, tpe) -> do
+      print subst
+      prettyPrint tpe
+
   pure ()

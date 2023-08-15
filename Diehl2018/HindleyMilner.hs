@@ -83,6 +83,9 @@ data Scheme = Forall [TV] Type
 newtype TypeEnv
   = TypeEnv (Map Name Scheme)
 
+emptyTypeEnv :: TypeEnv
+emptyTypeEnv = TypeEnv Map.empty
+
 extend :: TypeEnv -> (Name, Scheme) -> TypeEnv
 extend (TypeEnv env) (x, s) =
   if Map.member x env
