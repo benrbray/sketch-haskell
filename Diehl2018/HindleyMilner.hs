@@ -5,7 +5,7 @@
 
 module HindleyMilner where
 
-import Protolude hiding (Type, TypeError(TypeError))
+import Protolude hiding (Type, TypeError(TypeError), Constraint)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
@@ -13,6 +13,9 @@ import Data.Text.Read qualified as T
 import Control.Monad.Gen
 import Control.Monad.Trans.Except
 import GHC.Base (error)
+import Control.Monad.Writer
+import Control.Monad.RWS (MonadWriter)
+import Control.Monad.Trans.RWS (RWST, evalRWST)
 
 ---- syntax --------------------------------------------------------------------
 
@@ -83,9 +86,6 @@ data Scheme = Forall [TV] Type
 newtype TypeEnv
   = TypeEnv (Map Name Scheme)
 
-emptyTypeEnv :: TypeEnv
-emptyTypeEnv = TypeEnv Map.empty
-
 extend :: TypeEnv -> (Name, Scheme) -> TypeEnv
 extend (TypeEnv env) (x, s) =
   if Map.member x env
@@ -130,6 +130,10 @@ instance Substitutable TypeEnv where
   applySubst s (TypeEnv env) = TypeEnv $ Map.map (applySubst s) env
   freeTypeVars (TypeEnv env) = freeTypeVars $ Map.elems env
 
+instance Substitutable Constraint where
+  applySubst s (Constraint t1 t2) = Constraint (applySubst s t1) (applySubst s t2)
+  freeTypeVars (Constraint t1 t2) = (freeTypeVars t1) `Set.union` (freeTypeVars t2)
+
 emptySubst :: Subst
 emptySubst = Map.empty
 
@@ -138,82 +142,99 @@ emptySubst = Map.empty
 merge :: Subst -> Subst -> Subst
 s1 `merge` s2 = (Map.map (applySubst s1) s2) `Map.union` s1 
 
----- inference monad -----------------------------------------------------------
+---- infer monad ---------------------------------------------------------------
 
 data TypeError
   = InfiniteType TV Type
-  | CannotUnify Type Type
+  | UnificationFail Type Type
+  | UnificationMismatch [Type] [Type]
   | TypeErrorOther Text
   | UnboundVariable Name
   deriving stock (Show)
 
-type Infer a = ExceptT TypeError (Gen Int) a
+newtype InferState = InferState {
+  freshCounter :: Int
+}
 
----- first order unification ---------------------------------------------------
+-- constraints record assertions that two types must unify
+data Constraint
+  = Constraint Type Type
+  deriving stock (Eq, Show)
 
--- the result of unification is either
---     a unifying substitution,
---     or a type error indicating failure
-unify :: Type -> Type -> Infer Subst
-unify (TypeVar x) t = unifyBind x t
-unify t (TypeVar x) = unifyBind x t
-unify (TypeCon c1) (TypeCon c2)
-  | c1 == c2 = pure emptySubst
-unify (TypeArr l1 r1) (TypeArr l2 r2) = do
-  sL <- unify l1 l2
-  sR <- unify (applySubst sL r1) (applySubst sL r2)
+-- | type inference monad
+type Infer a
+  = (RWST
+      TypeEnv             -- R: current typing environment
+      [Constraint]        -- W: generated constraints
+      InferState          -- S: inference state
+      (Except TypeError)  -- type inference errors
+      a                   -- result
+    )
 
-  -- QUESTION: why not @sL `merge` sR@?
-  pure (sR `merge` sL)
-unify t1 t2 = throwError $ CannotUnify t1 t2
+type MonadTypeError m  = MonadError TypeError m
+type MonadTypeEnv m    = MonadReader TypeEnv m
+type MonadInferState m = MonadState InferState m
+type MonadConstraint m = MonadWriter [Constraint] m
+type MonadInfer m      = (MonadTypeError m, MonadTypeEnv m, MonadInferState m, MonadConstraint m)
 
--- returns @True@ whenever the type variable @x@ appears free in @t@
--- used to rule out infinite types, e.g. when checking @λx. x x@
-occursCheck :: Substitutable a => TV -> a -> Bool
-occursCheck x t = x `Set.member` freeTypeVars t
+runInfer :: Infer Type -> Either TypeError (Type, [Constraint])
+runInfer m = runExcept $ evalRWST m emptyTypeEnv initialState
+  where
+    emptyTypeEnv = TypeEnv Map.empty
+    initialState = InferState { freshCounter = 0 }
 
-unifyBind :: TV -> Type -> Infer Subst
-unifyBind x t
-  | t == (TypeVar x) = pure emptySubst
-  | occursCheck x t  = throwError $ InfiniteType x t
-  | otherwise        = return $ Map.singleton x t
+---- infer monad operations ----------------------------------------------------
 
---------------------------------------------------------------------------------
+-- | Records a new unification constraint, to be solved later.
+addConstraint :: MonadWriter [Constraint] m => Type -> Type -> m ()
+addConstraint t1 t2 = tell [Constraint t1 t2]
 
-freshTV :: Infer TV
-freshTV = TV . Fresh <$> gen
+-- | Executes the given @Infer@ action in an environment extended
+-- with the passed type annotation.  Useful managing local scope.
+inLocalScope :: MonadTypeEnv m => (Name, Scheme) -> m a -> m a
+inLocalScope (x, sch) m =
+  do
+    let scope :: TypeEnv -> TypeEnv
+        scope env = (remove env x) `extend` (x , sch)
+    local scope m
+  where 
+    remove :: TypeEnv -> Name -> TypeEnv
+    remove (TypeEnv env) k = TypeEnv $ Map.delete k env
 
-instantiate :: Scheme -> Infer Type
-instantiate (Forall as0 t) = do
-  -- bind fresh typevars for each typevar mentioned in the forall
-  as1 <- traverse (const $ TypeVar <$> freshTV) as0
-  let s = Map.fromList $ zip as0 as1
-  return $ applySubst s t
-
--- universally quantify over any free variables in a given type
--- (which are not also mentioned in the typing environment)
-generalize :: TypeEnv -> Type -> Scheme
-generalize env t = Forall as t
-  where as = Set.toList $ freeTypeVars t `Set.difference` freeTypeVars env
-
---------------------------------------------------------------------------------
-
-runInfer :: Infer (Subst, Type) -> Either TypeError (Subst, Type)
-runInfer m = case runGen (runExceptT m) of
-  Left err -> Left err
-  Right y -> Right y
+-- | Generate a fresh type metavariable.
+fresh :: MonadInferState m => m Type
+fresh = do
+  InferState { freshCounter } <- get
+  put $ InferState { freshCounter = freshCounter + 1 }
+  return $ (TypeVar . TV . Fresh) freshCounter
 
 -- looks up a local variable in the typing env,
 -- and if found instantiates a fresh copy
--- QUESTION: why return Subst here if it's always empty?
--- QUESTION: what's the meaning of the (Subst, Type) tuple?
-lookupEnv :: TypeEnv -> Name -> Infer (Subst, Type)
-lookupEnv (TypeEnv env) x = do
+lookupEnv :: MonadInfer m => Name -> m Type
+lookupEnv x = do
+  TypeEnv env <- ask
   case Map.lookup x env of
     Nothing  -> throwError $ UnboundVariable x
-    Just sch -> do
-      t <- instantiate sch
-      return (emptySubst, t)
+    Just sch -> instantiate sch
+
+---- hindley-milner generalization & instantiation -----------------------------
+
+-- | bind fresh typevars for each typevar mentioned in the forall
+instantiate :: MonadInferState m => Scheme -> m Type
+instantiate (Forall as0 t) = do
+  as1 <- traverse (const fresh) as0
+  let s = Map.fromList $ zip as0 as1
+  return $ applySubst s t
+
+-- | universally quantify over any free variables in a given type
+-- (which are not also mentioned in the typing environment)
+generalize :: MonadTypeEnv m => Type -> m Scheme
+generalize t = do
+  env <- ask
+  let as = Set.toList $ freeTypeVars t `Set.difference` freeTypeVars env
+  return $ Forall as t
+
+--------------------------------------------------------------------------------
 
 -- maps the local typing env and the active expression to a tuple containing
 --     a partial solution to unification
@@ -221,52 +242,108 @@ lookupEnv (TypeEnv env) x = do
 -- the AST is traversed bottom-up and constraints are solved at each level of
 -- recursion by applying partial substitutions from unification across each
 -- partially inferred subexpression and the local environment
-infer :: TypeEnv -> Expr -> Infer (Subst, Type)
-infer env0 ex = case ex of
+infer :: MonadInfer m => Expr -> m Type
+infer ex = case ex of
   
-  Var x -> lookupEnv env0 x
+  Var x -> lookupEnv x
 
   Lam x e -> do
-    tv <- TypeVar <$> freshTV
-    let env1 = extend env0 (x, Forall [] tv)
-    (s1, t1) <- infer env1 e
-    return (s1, applySubst s1 tv `TypeArr` t1)
+    tv <- fresh
+    t  <- inLocalScope (x, Forall [] tv) (infer e)
+    return (tv `TypeArr` t)
   
-  App e1 e2 -> do
-    tv <- TypeVar <$> freshTV
-    (s1, t1) <- infer env0 e1
-    (s2, t2) <- infer (applySubst s1 env0) e2
-    s3       <- unify (applySubst s2 t1) (TypeArr t2 tv)
-    return (s3 `merge` s2 `merge` s1, applySubst s3 tv)
+  App efun earg -> do
+    tres <- fresh
+    tfun <- infer efun
+    targ <- infer earg
+    addConstraint tfun (TypeArr targ tres)
+    return tres
 
   Let x e1 e2 -> do
-    (s1, t1a) <- infer env0 e1
-    let env1  = (applySubst s1 env0)
-        t1b   = generalize env1 t1a
-        env2  = env1 `extend` (x, t1b)
-    (s2, t2)  <- infer env2 e2
-    return (s2 `merge` s1, t2)
+    -- let-generalization
+    te1 <- generalize =<< infer e1
+    te2 <- inLocalScope (x, te1) (infer e2)
+    return te2
 
-  If cond thn els -> do
-    (s1, t1) <- infer env0 cond
-    (s2, t2) <- infer env0 thn
-    (s3, t3) <- infer env0 els
-    s4       <- unify t1 typeBool
-    s5       <- unify t2 t3
-    return (s5 `merge` s4 `merge` s3 `merge` s2 `merge` s1, applySubst s5 t2)
+  If econd etru efls -> do
+    tcond <- infer econd
+    ttru  <- infer etru
+    tfls  <- infer efls
 
-  Fix e1 -> do
-    (s1, t) <- infer env0 e1
-    tv <- TypeVar <$> freshTV
-    s2 <- unify (TypeArr tv tv) t
-    return (s2, applySubst s1 tv)
+    addConstraint tcond typeBool
+    addConstraint ttru tfls
+
+    return ttru
+
+  Fix e -> do
+    t    <- infer e
+    tres <- fresh
+    addConstraint t (TypeArr tres tres)
+    return t
   
   Op op e1 e2 -> do
-    (s1, t1) <- infer env0 e1
-    (s2, t2) <- infer env0 e2
-    tv <- TypeVar <$> freshTV
-    s3 <- unify (TypeArr t1 (TypeArr t2 tv)) (ops Map.! op)
-    return (s1 `merge` s2 `merge` s3, applySubst s3 tv)
+    t1     <- infer e1
+    t2     <- infer e2
+    tres   <- fresh
+    
+    let top = ops Map.! op
+    addConstraint (TypeArr t1 (TypeArr t2 tres)) top
 
-  Lit (LInt _)  -> return (emptySubst, typeInt)
-  Lit (LBool _) -> return (emptySubst, typeBool)
+    return tres
+
+  Lit (LInt _)  -> return typeInt
+  Lit (LBool _) -> return typeBool
+
+---- first-order unification ---------------------------------------------------
+
+-- | A current candidate unifier, along with a set of yet-unsolved constraints.
+-- Represents partial progress towards solving the unification problem.
+type PartialUnifier = (Subst, [Constraint])
+
+type Solve a = ExceptT TypeError Identity a
+
+runSolve :: Solve a -> Either TypeError a
+runSolve = runIdentity . runExceptT
+
+-- recursively solves 
+solve :: PartialUnifier -> Solve Subst
+solve (subst0, []) = pure subst0
+solve (subst0, (Constraint t1 t2) : constrs) = do
+  subst1 <- unify t1 t2
+  solve (subst1 `merge` subst0, applySubst subst1 constrs)
+
+-- to unify a lone metavariable @m@ with a type @t@, simply return
+-- the substitution @{ x <- t }@, provided that the occurs check passes
+unifyBind :: (MonadError TypeError m) => TV -> Type -> m Subst
+unifyBind x t
+  | t == (TypeVar x) = pure emptySubst
+  | occursCheck x t  = throwError $ InfiniteType x t
+  | otherwise        = return $ Map.singleton x t
+  where
+    -- returns @True@ whenever the type variable @x@ appears free in @t@
+    -- used to rule out infinite types, e.g. when checking @λx. x x@
+    occursCheck :: Substitutable a => TV -> a -> Bool
+    occursCheck y typ = y `Set.member` freeTypeVars typ
+
+
+unify :: Type -> Type -> Solve Subst
+unify t1 t2
+  | t1 == t2 = pure emptySubst
+unify (TypeVar x) t = unifyBind x t
+unify t (TypeVar x) = unifyBind x t
+unify (TypeArr l1 r1) (TypeArr l2 r2) =
+  unifyMany [l1, r1] [l2, r2]
+unify t1 t2 = throwError $ UnificationFail t1 t2
+
+unifyMany :: [Type] -> [Type] -> Solve Subst
+unifyMany [] [] = pure emptySubst
+unifyMany (t1 : ts1) (t2 : ts2) =
+  do subst1 <- unify t1 t2
+     subst2 <- unifyMany (applySubst subst1 ts1) (applySubst subst1 ts2)
+
+    -- QUESTION: does the order of @merge@ matter here?
+     return (subst1 `merge` subst2)
+unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
+
+--------------------------------------------------------------------------------
+

@@ -115,7 +115,8 @@ executable diehl2018
     megaparsec,
     logict,
     monad-gen,
-    protolude
+    protolude,
+    mtl
   other-modules:
     HindleyMilner
     Archived.Fresh
