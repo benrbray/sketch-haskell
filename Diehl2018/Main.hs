@@ -37,9 +37,9 @@ instance Pretty TypeError where
 
 main :: IO ()
 main = do
-  let tvX = TypeVar (TV "X")
-  let tvY = TypeVar (TV "Y")
-  let tvZ = TypeVar (TV "Z")
+  let tvX = TypeVar (TV $ Name "X")
+  let tvY = TypeVar (TV $ Name "Y")
+  let tvZ = TypeVar (TV $ Name "Z")
 
   let t1 = tvX
   let t2 = TypeArr tvX tvZ
