@@ -1,4 +1,4 @@
-cabal-version:       3.6
+cabal-version:       3.8
 name:                haskell
 version:             0.1.0.0
 license-file:        LICENSE
@@ -56,8 +56,6 @@ common common
     MultiParamTypeClasses
     MultiWayIf
     NamedFieldPuns
-    NoFieldSelectors
-    NoFieldSelectors
     NoImplicitPrelude
     OverloadedLabels
     OverloadedRecordDot
@@ -120,6 +118,17 @@ executable diehl2018
   other-modules:
     HindleyMilner
     Archived.Fresh
+
+executable continuations
+  import: common
+  hs-source-dirs: Continuations
+  main-is: Main.hs
+  other-modules:
+    Yao2022,
+    Roche2019
+  build-depends:
+    mtl,
+    protolude
 
 executable fol
   import: common

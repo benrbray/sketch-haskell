@@ -36,5 +36,14 @@ cradle:
     - path: "Diehl2018/Archived/Fresh.hs"
       component: "haskell:exe:diehl2018"
 
+    - path: "Continuations/Main.hs"
+      component: "haskell:exe:continuations"
+
+    - path: "Continuations/Yao2022.hs"
+      component: "haskell:exe:continuations"
+
+    - path: "Continuations/Roche2019.hs"
+      component: "haskell:exe:continuations"
+
     - path: "src/FOL/Main.hs"
       component: "haskell:exe:fol"
