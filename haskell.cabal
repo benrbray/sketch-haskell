@@ -140,3 +140,18 @@ executable fol
   other-modules:
     FirstOrderLogic
     Parser
+
+executable cofree
+  import: common
+  hs-source-dirs:  cofree
+  main-is:         Main.hs
+  other-modules:
+    Orchard
+    DataTypesALaCarte
+
+executable lens
+  import: common
+  hs-source-dirs:  lens
+  main-is:         Main.hs
+  build-depends:
+    lens
